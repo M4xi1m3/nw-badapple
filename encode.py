@@ -10,17 +10,11 @@ We start with a video being already the size of the display of the device.
 
 We start with a frame-type byte :
 00 : Normal encoding
+01 : RLE starting with black
+02 : RLE starting with white
 03 : Completly black frame
 04 : Completly white frame
 05 : Duplicate last frame
-
-For Normal encoding, we encode line in two ways :
-00 : Delta encoding (todo)
-01 : The line is simply RLEd (number of black, then number of white, etc..)
-02 : The line is simply RLEd (number of white, then number of black, etc..)
-03 : Completly black line
-04 : Completly white line
-05 : Duplicate last line
 
 """
 
@@ -29,9 +23,6 @@ import struct
 import io
 from itertools import chain
 from itertools import groupby
-
-def create_blank_frame():
-    return [[0] * 320] * 240
 
 """
 def get_frame(vid):
@@ -52,9 +43,9 @@ def get_frame(vid):
     if len(data) != 320*240:
         return None
     buff = io.BytesIO(data);
-    
+
     frame = []
-    
+
     for i in range(240):
         line = []
         for j in range(320):
@@ -69,36 +60,31 @@ def line_rle(line, startswith):
     if rled[0][0] == 1-startswith:
         out.append(0)
     for split in rled:
-        if (split[1] > 255):
+        a = split[1]
+        while(a > 255):
             out.append(255)
             out.append(0)
-            out.append(split[1] - 255)
-        else:
-            out.append(split[1])
+            a -= 255
+        out.append(a)
     return out
 
 def write_barray(f, barray):
     for i in barray:
         f.write(struct.pack(">B", i))
 
+def rle_encode(frame):
+    plane_frame = list(chain.from_iterable(frame))
+    out = []
+    if (plane_frame[0] == 0):
+        out.append(1)
+        out.extend(line_rle(plane_frame, 0))
+    else:
+        out.append(2)
+        out.extend(line_rle(plane_frame, 1))
+    return out
+
 def normal_encode(last_frame, frame, f):
-    for i in range(len(frame)):
-        if (frame[i] == last_frame[i]):
-            f.write(struct.pack(">B", 5))
-        elif (set(frame[i]) == {0}):
-            f.write(struct.pack(">B", 3))
-        elif (set(frame[i]) == {1}):
-            f.write(struct.pack(">B", 4))
-        else:
-            black_rle = line_rle(frame[i], 0)
-            white_rle = line_rle(frame[i], 1)
-            
-            if len(black_rle) < len(white_rle):
-                f.write(struct.pack(">B", 1))
-                write_barray(f, black_rle)
-            else:
-                f.write(struct.pack(">B", 2))
-                write_barray(f, white_rle)
+    write_barray(f, rle_encode(frame), f);
     return True
 
 def encode_frame(last_frame, frame, f):
@@ -114,13 +100,12 @@ def encode_frame(last_frame, frame, f):
         f.write(struct.pack(">B", 4)) # Completly white frame
         return True
 
-    f.write(struct.pack(">B", 0)) # Normal encode
     return normal_encode(last_frame, frame, f)
 
 def main():
-    vid = open("raw", "rb")
+    vid = open("raw-30", "rb")
     # vid = cv2.VideoCapture("320x240-30.mp4")
-    f = open("tmp", "wb")
+    f = open("tmp-30", "wb")
     
     # We know it start with a blank frame
     f.write(struct.pack(">B", 3))

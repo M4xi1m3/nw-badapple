@@ -13,32 +13,29 @@ def write_frame(i, frame):
     img.write("\n")
     img.close()
 
-def normal_decode(last_frame, f):
+def rle_decode(f, startwith):
     frame = []
-    for i in range(240):
-        line = []
-        line_type, = struct.unpack(">B", f.read(1))
-        if line_type == 0:
-            return # TODO
-        elif line_type == 1 or line_type == 2:
-            # RLE
-            total_len = 0
-            color = line_type == 1 # Volontary inverted due to the image format
-            while total_len < 320:
-                num, = struct.unpack(">B", f.read(1))
-                line.extend([1 if color else 0] * num)
-                color = not color
-                total_len += num
-        elif line_type == 3:
-            line = [1] * 320 # Volontary inverted due to the image format
-        elif line_type == 4:
-            line = [0] * 320 # Volontary inverted due to the image format
-        elif line_type == 5:
-            line = last_frame[i]
-        frame.append(line)
-    return frame;
+    i = 0
+    color = startwith == 1 # Volontary inverted due to the image format
+    line = []
+    j = 0
+    while i < 320*240:
+        num, = struct.unpack(">B", f.read(1))
+        i += num
+        j += num
+        if (j >= 320):
+            line.extend([0 if color else 1] * (num - (j - 320)))
+            frame.append(line)
+            line = []
+            if (j - 320 != 0):
+                line.extend([0 if color else 1] * (j - 320))
+            j = 0
+        else:
+            line.extend([0 if color else 1] * num)
             
-        
+        color = not color
+    
+    return frame
 
 def main():
     encoded_file = open("tmp", "rb")
@@ -55,8 +52,11 @@ def main():
             write_frame(i, last_frame)
         elif frame_type == 5:
             write_frame(i, last_frame)
-        elif frame_type == 0:
-            last_frame = normal_decode(last_frame, encoded_file)
+        elif frame_type == 1:
+            last_frame = rle_decode(encoded_file, 0)
+            write_frame(i, last_frame)
+        elif frame_type == 2:
+            last_frame = rle_decode(encoded_file, 1)
             write_frame(i, last_frame)
         else:
             break;
